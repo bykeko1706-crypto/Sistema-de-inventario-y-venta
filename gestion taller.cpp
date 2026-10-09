@@ -7,20 +7,22 @@
 using namespace std;
 
 // ==========================================
-// FUNCIONES AYUDANTES: VALIDACIÓN DE ERRORES
+// 1. FUNCIONES AYUDANTES: VALIDACIÓN DE ERRORES
 // ==========================================
+// Explicación para tu defensa: "Estas funciones evitan que el programa colapse 
+// si el usuario introduce una letra cuando el sistema espera un número".
 
-// Obliga al usuario a ingresar un número entero y limpia el buffer
+// Obliga al usuario a ingresar un número entero y limpia el teclado
 int leerEntero(string mensaje) {
     int valor;
     while (true) {
         cout << mensaje;
         if (cin >> valor) {
-            cin.ignore(numeric_limits<streamsize>::max(), '\n'); // Limpia el salto de línea residual
+            cin.ignore(numeric_limits<streamsize>::max(), '\n'); // Limpia residuos como 'Enter'
             return valor;
         } else {
             cout << "[!] Error: Debes ingresar un numero valido.\n";
-            cin.clear(); // Limpia la bandera de error
+            cin.clear(); // Apaga la alerta de error de C++
             cin.ignore(numeric_limits<streamsize>::max(), '\n'); // Borra la palabra equivocada
         }
     }
@@ -42,42 +44,51 @@ double leerDouble(string mensaje) {
     }
 }
 
-// Ejecuta instrucciones SQL en la base de datos de forma segura
+// ==========================================
+// 2. CONEXIÓN A LA BASE DE DATOS
+// ==========================================
+// Explicación: "Esta función es el puente que traduce las órdenes de C++ a SQLite".
 void ejecutarSQL(sqlite3* DB, string instruccionSQL) {
     char* mensajeError;
+    // sqlite3_exec ejecuta el comando. Si falla, guarda el motivo en mensajeError
     int resultado = sqlite3_exec(DB, instruccionSQL.c_str(), NULL, 0, &mensajeError);
     
     if (resultado != SQLITE_OK) {
         cout << "[!] Error en la base de datos: " << mensajeError << endl;
-        sqlite3_free(mensajeError);
+        sqlite3_free(mensajeError); // Libera la memoria del error para evitar fugas
     }
 }
 
 // ==========================================
-// CLASES DEL SISTEMA
+// 3. ARQUITECTURA DEL SISTEMA (CLASES)
 // ==========================================
+// Explicación: "Aplicamos Programación Orientada a Objetos para modelar el entorno real".
 
 class Material {
 private:
+    // Atributos privados por seguridad (Encapsulamiento)
     string Tipo;
     string Color;
     double PesoGramos; 
     double PrecioPorGramo; 
 
 public:
+    // Constructor: Nace el material con sus datos iniciales
     Material(string tipo, string color, double pesoInicial, double precioG) {
         Tipo = tipo; Color = color; PesoGramos = pesoInicial; PrecioPorGramo = precioG;
     }
 
+    // Métodos Get/Set para acceder a la información de forma controlada
     string getTipo() { return Tipo; }
     double getPrecioPorGramo() { return PrecioPorGramo; }
     void setPrecioPorGramo(double nuevoPrecio) { PrecioPorGramo = nuevoPrecio; }
     
-    // Función para chequear sin restar todavía
+    // Verifica si hay suficientes gramos antes de imprimir la pieza
     bool tieneSuficiente(double gramosUsados) {
         return PesoGramos >= gramosUsados;
     }
 
+    // Resta los gramos consumidos del inventario en memoria
     void descontarMaterial(double gramosUsados) {
         PesoGramos -= gramosUsados;
     }
@@ -101,6 +112,8 @@ public:
         Nombre = nombre; Apellido = apellido; Direccion = direccion; Telefono = telefono; DineroGenerado = 0.0;
     }
     string getNombre() { return Nombre + " " + Apellido; }
+    
+    // Agrega la compra al historial interno del cliente
     void registrarCompra(string descripcion, double monto) {
         Historial.push_back({descripcion, monto}); DineroGenerado += monto;
     }
@@ -120,40 +133,43 @@ public:
     string getModelo() { return Modelo; }
     double getCostoPorHora() { return CostoPorHora; }
     void setCostoPorHora(double nuevoCosto) { CostoPorHora = nuevoCosto; }
+    
+    // Suma horas de uso operativo de los equipos
     void registrarTrabajo(string descripcion, double horas) {
         HorasTotalesTrabajadas += horas; TrabajosRealizados.push_back({descripcion, horas});
     }
     void mostrarEquipo() { cout << "- " << Modelo << " | Costo operativo: $" << CostoPorHora << "/h" << endl; }
 };
 
-// SOLUCIÓN A LA TRAMPA DE MEMORIA: Venta ahora toma una "fotografía" en texto de los datos
+// Explicación: "La clase Venta captura los datos en texto para generar notas de entrega inmutables".
 class Venta {
 private:
     string Fecha; 
     string DescripcionPieza;
-    string NombreClienteFoto; // Fotografía del nombre
-    string MaterialFoto;      // Fotografía del material
-    string EquipoFoto;        // Fotografía del equipo
+    string NombreClienteFoto; // Se guarda como texto (foto) para no depender de punteros
+    string MaterialFoto;      
+    string EquipoFoto;        
     double GramosConsumidos;
     double HorasUso;
     double Total;
 
 public:
-    // Pasamos los objetos por referencia (&) solo para actualizarlos aquí adentro
+    // Los objetos entran por referencia (&) para poder modificarlos (ej: restar gramos)
     Venta(string fecha, string descripcion, Cliente& cliente, Material& material, Impresora& equipo, double gramos, double horas) {
         Fecha = fecha;
         DescripcionPieza = descripcion;
         GramosConsumidos = gramos;
         HorasUso = horas;
         
-        // Guardamos las fotografías de texto para no depender de punteros fantasma
+        // Guardamos las fotografías de texto
         NombreClienteFoto = cliente.getNombre();
         MaterialFoto = material.getTipo();
         EquipoFoto = equipo.getModelo();
         
+        // El sistema calcula automáticamente el costo cruzando horas y gramos
         Total = (GramosConsumidos * material.getPrecioPorGramo()) + (HorasUso * equipo.getCostoPorHora());
         
-        // Efectuamos los descuentos y registros reales en la memoria
+        // Efectuamos los descuentos lógicos en la memoria temporal
         material.descontarMaterial(GramosConsumidos);
         equipo.registrarTrabajo(DescripcionPieza, HorasUso);
         cliente.registrarCompra(DescripcionPieza, Total);
@@ -179,16 +195,17 @@ public:
 };
 
 // ==========================================
-// FUNCIONES DE CARGA DESDE BASE DE DATOS
-// (Puestas aquí abajo para que C++ ya sepa qué es un Cliente, Material, etc.)
+// 4. FUNCIONES DE LECTURA (PERSISTENCIA DE DATOS)
 // ==========================================
+// Explicación: "Estos módulos recuperan la información del disco duro cuando arranca el programa".
 
-// Lee los clientes de la base de datos y los carga en el sistema al iniciar
 void cargarClientesDesdeDB(sqlite3* DB, vector<Cliente>& clientes) {
     string sql = "SELECT Nombre, Apellido, Direccion, Telefono FROM Clientes;";
-    sqlite3_stmt* stmt;
+    sqlite3_stmt* stmt; // Puntero que guarda la respuesta de la base de datos
     
+    // Si la consulta está bien escrita...
     if (sqlite3_prepare_v2(DB, sql.c_str(), -1, &stmt, NULL) == SQLITE_OK) {
+        // ...leemos fila por fila mientras existan registros
         while (sqlite3_step(stmt) == SQLITE_ROW) {
             string nombre = (const char*)sqlite3_column_text(stmt, 0);
             string apellido = (const char*)sqlite3_column_text(stmt, 1);
@@ -198,10 +215,9 @@ void cargarClientesDesdeDB(sqlite3* DB, vector<Cliente>& clientes) {
             clientes.push_back(Cliente(nombre, apellido, direccion, telefono));
         }
     }
-    sqlite3_finalize(stmt); 
+    sqlite3_finalize(stmt); // Cerramos el puntero para ahorrar memoria
 }
 
-// Lee los materiales de la base de datos y los carga en el inventario al iniciar
 void cargarMaterialesDesdeDB(sqlite3* DB, vector<Material>& inventario) {
     string sql = "SELECT Tipo, Color, PesoGramos, PrecioPorGramo FROM Materiales;";
     sqlite3_stmt* stmt;
@@ -219,7 +235,6 @@ void cargarMaterialesDesdeDB(sqlite3* DB, vector<Material>& inventario) {
     sqlite3_finalize(stmt);
 }
 
-// Lee las impresoras de la base de datos y las carga al iniciar
 void cargarImpresorasDesdeDB(sqlite3* DB, vector<Impresora>& impresoras) {
     string sql = "SELECT Modelo, CostoPorHora FROM Impresoras;";
     sqlite3_stmt* stmt;
@@ -236,20 +251,22 @@ void cargarImpresorasDesdeDB(sqlite3* DB, vector<Impresora>& impresoras) {
 }
 
 // ==========================================
-// FUNCIÓN PRINCIPAL
+// 5. FUNCIÓN PRINCIPAL (NÚCLEO DEL PROGRAMA)
 // ==========================================
 
 int main() {
     sqlite3* DB; 
+    // Intenta abrir el archivo. Si no existe, lo crea automáticamente.
     int conexion = sqlite3_open("taller_real.db", &DB);
 
     if (conexion) {
         cout << "[!] Error al conectar con SQLite: " << sqlite3_errmsg(DB) << endl;
-        return 0; // Detiene el programa si no se puede conectar
+        return 0; // Aborta si no hay motor de datos
     } else {
         cout << "\n>>> [EXITO] BASE DE DATOS CREADA Y CONECTADA CORRECTAMENTE <<<\n" << endl;
     }
 
+    // Estructuramos las tablas usando lenguaje SQL (Esquema relacional)
     string sqlTablas = 
         "CREATE TABLE IF NOT EXISTS Clientes ("
         "ID INTEGER PRIMARY KEY AUTOINCREMENT, "
@@ -270,11 +287,13 @@ int main() {
 
     ejecutarSQL(DB, sqlTablas);
 
+    // Vectores que almacenan la información activa en la RAM
     vector<Material> inventario; 
     vector<Cliente> clientes; 
     vector<Impresora> impresoras; 
     vector<Venta> historialVentas; 
 
+    // Disparamos la lectura masiva de datos al iniciar el software
     cargarMaterialesDesdeDB(DB, inventario);
     cargarClientesDesdeDB(DB, clientes);
     cargarImpresorasDesdeDB(DB, impresoras);
@@ -282,7 +301,8 @@ int main() {
     int opcionPrincipal;
 
     do {
-        cout << "\n========= MENU PRINCIPAL (VERSION LIMPIA) =========" << endl;
+        // Interfaz principal de usuario
+        cout << "\n========= MENU PRINCIPAL (ESTUDIO PIXEL) =========" << endl;
         cout << "1. Modulo de Clientes" << endl;
         cout << "2. Modulo de Impresoras" << endl;
         cout << "3. Modulo de Materiales" << endl;
@@ -309,6 +329,7 @@ int main() {
                         
                         clientes.push_back(Cliente(nombre, apellido, direccion, telefono));
                         
+                        // Generamos el comando INSERT para hacer el registro permanente
                         string sqlInsert = "INSERT INTO Clientes (Nombre, Apellido, Direccion, Telefono) "
                                            "VALUES ('" + nombre + "', '" + apellido + "', '" + direccion + "', '" + telefono + "');";
                         ejecutarSQL(DB, sqlInsert);
@@ -368,6 +389,7 @@ int main() {
             }
 
             case 4: { 
+                // Evitamos procesar ventas si el sistema está vacío
                 if (clientes.empty() || inventario.empty() || impresoras.empty()) {
                     cout << "\n[!] Faltan datos (cliente, material o impresora).\n"; break;
                 }
@@ -375,6 +397,7 @@ int main() {
                 string fecha, desc;
                 cout << "\n[NUEVA VENTA]\nFecha (ej. 09-2026): "; getline(cin, fecha);
 
+                // --- PROCESO DE SELECCIÓN POR ÍNDICE ---
                 cout << "-- Seleccione Cliente --\n";
                 for (size_t i = 0; i < clientes.size(); i++) cout << "[" << i << "] " << clientes[i].getNombre() << "\n";
                 int iCli = leerEntero("Opcion: ");
@@ -393,6 +416,7 @@ int main() {
                 cout << "Descripcion de la pieza: "; getline(cin, desc);
                 double gramos = leerDouble("Gramos a consumir: ");
                 
+                // Barrera de seguridad: Comprueba si la bobina soporta el trabajo
                 if (!inventario[iMat].tieneSuficiente(gramos)) {
                     cout << "\n[!] ALERTA: Operacion cancelada. Solo te quedan " 
                          << inventario[iMat].tieneSuficiente(gramos) << "g de " << inventario[iMat].getTipo() << ".\n";
@@ -401,16 +425,21 @@ int main() {
 
                 double horas = leerDouble("Horas de impresion: ");
 
+                // Se procesa la transacción lógica y se imprime recibo
                 Venta nuevaVenta(fecha, desc, clientes[iCli], inventario[iMat], impresoras[iImp], gramos, horas);
                 nuevaVenta.generarNotaEntrega();
                 historialVentas.push_back(nuevaVenta);
                 
+                // --- ACTUALIZACIÓN DE TRANSACCIÓN EN BASE DE DATOS ---
+                
+                // 1. Guardamos el registro en la tabla de Ventas
                 string sqlInsertVenta = "INSERT INTO Ventas (Fecha, Descripcion, Cliente, Equipo, Material, Gramos, Horas, Total) "
                                         "VALUES ('" + fecha + "', '" + desc + "', '" + clientes[iCli].getNombre() + "', '" 
                                         + impresoras[iImp].getModelo() + "', '" + inventario[iMat].getTipo() + "', " 
                                         + to_string(gramos) + ", " + to_string(horas) + ", " + to_string(nuevaVenta.getTotal()) + ");";
                 ejecutarSQL(DB, sqlInsertVenta);
 
+                // 2. Descontamos el material físico del inventario mediante UPDATE
                 string sqlUpdateMaterial = "UPDATE Materiales SET PesoGramos = PesoGramos - " + to_string(gramos) + 
                                            " WHERE Tipo = '" + inventario[iMat].getTipo() + "';";
                 ejecutarSQL(DB, sqlUpdateMaterial);
@@ -432,6 +461,7 @@ int main() {
 
                         double granTotal = 0.0; int clientesActivos = 0;
 
+                        // Recorremos los clientes y buscamos coincidencias en las ventas (Filtrado)
                         cout << "\n=== REPORTE (" << filtroFecha << ") ===" << endl;
                         for (size_t c = 0; c < clientes.size(); c++) {
                             double subtotal = 0.0; int trabajos = 0;
@@ -453,11 +483,11 @@ int main() {
                 } while (opReporte != 2);
                 break;
             }
-            case 6: cout << "\nCerrando..." << endl; break;
+            case 6: cout << "\nCerrando sistema..." << endl; break;
             default: cout << "\n[!] Opcion no valida." << endl;
         }
     } while (opcionPrincipal != 6);
 
-    sqlite3_close(DB);
+    sqlite3_close(DB); // Cerramos ordenadamente el acceso al archivo
     return 0;
 }
